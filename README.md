@@ -1,6 +1,5 @@
 # SmartDesk AI — Agentic RAG Support Assistant
-🔗 **Live Demo:** https://smartdesk-ai-2emjgcwyos5bug3d7vgfkj.streamlit.app/
-💻 **Backend API:** https://smartdesk-ai-backend-9h4d.onrender.com/docs
+
 An AI support assistant for a CRM product ("CloudCRM") that can both **answer
 questions** from product documentation (RAG) and **take actions** — looking up
 live ticket status via a tool call — deciding which to do based on the query.
