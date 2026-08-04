@@ -7,10 +7,18 @@ Run with (after starting api.py in another terminal):
     streamlit run app.py
 """
 
+import os
 import requests
 import streamlit as st
 
-API_URL = "http://localhost:8000/chat"
+# Reads the backend URL from Streamlit secrets (set this in Streamlit Cloud's
+# "Secrets" settings when deployed) or an environment variable. Falls back to
+# localhost for local development, so nothing changes for your laptop setup.
+try:
+    BACKEND_BASE_URL = st.secrets["BACKEND_URL"]
+except Exception:
+    BACKEND_BASE_URL = os.environ.get("BACKEND_URL", "http://localhost:8000")
+API_URL = f"{BACKEND_BASE_URL}/chat"
 
 st.set_page_config(page_title="SmartDesk AI", page_icon="🤖", layout="centered")
 st.title("🤖 SmartDesk AI")

@@ -18,33 +18,67 @@ This mirrors how real agent frameworks (LangChain agents, OpenAI function
 calling, Salesforce Agentforce) work under the hood: route -> act -> respond.
 """
 
+import os
 import re
 import json
 import requests
 import chromadb
-from sentence_transformers import SentenceTransformer
 
 import tools
 
+# --- LLM provider config ---
+# LLM_PROVIDER controls which "brain" answers questions:
+#   "ollama" (default) -> free local model, used for laptop/dev demos
+#   "groq"              -> free cloud API, used for the live deployed version
+#                          (deployment platforms don't have enough RAM/CPU to run
+#                          Ollama, so the live demo swaps to a free hosted model
+#                          instead -- same code, same behavior, different backend)
+LLM_PROVIDER = os.environ.get("LLM_PROVIDER", "ollama").lower()
+
 OLLAMA_URL = "http://localhost:11434/api/generate"
-MODEL_NAME = "llama3.2:3b"
+OLLAMA_MODEL = "llama3.2:3b"
+
+GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "")
+GROQ_URL = "https://api.groq.com/openai/v1/chat/completions"
+GROQ_MODEL = "llama-3.1-8b-instant"  # fast, free-tier Groq model
+
 CHROMA_DIR = "chroma_db"
 COLLECTION_NAME = "product_faq"
-EMBEDDING_MODEL = "all-MiniLM-L6-v2"
 TOP_K = 3
 
-# --- Load embedding model + vector DB once at import time ---
-_embedder = SentenceTransformer(EMBEDDING_MODEL)
+# --- Vector DB (uses ChromaDB's built-in lightweight embedding function --
+# no heavyweight ML libraries needed, keeps both local install and
+# deployment fast and small) ---
 _client = chromadb.PersistentClient(path=CHROMA_DIR)
 _collection = _client.get_collection(COLLECTION_NAME)
 
 
 def call_llm(prompt: str, temperature: float = 0.2) -> str:
-    """Send a prompt to the local Ollama server and return the raw text response."""
+    """Send a prompt to whichever LLM backend is configured (Ollama or Groq)."""
+    if LLM_PROVIDER == "groq":
+        if not GROQ_API_KEY:
+            raise RuntimeError("LLM_PROVIDER is set to 'groq' but GROQ_API_KEY is not set.")
+        response = requests.post(
+            GROQ_URL,
+            headers={
+                "Authorization": f"Bearer {GROQ_API_KEY}",
+                "Content-Type": "application/json",
+            },
+            json={
+                "model": GROQ_MODEL,
+                "messages": [{"role": "user", "content": prompt}],
+                "temperature": temperature,
+            },
+            timeout=60,
+        )
+        response.raise_for_status()
+        return response.json()["choices"][0]["message"]["content"].strip()
+
+    # default: local Ollama
     response = requests.post(
         OLLAMA_URL,
         json={
-            "model": MODEL_NAME,
+            "model": OLLAMA_MODEL,
             "prompt": prompt,
             "stream": False,
             "options": {"temperature": temperature},
@@ -56,9 +90,8 @@ def call_llm(prompt: str, temperature: float = 0.2) -> str:
 
 
 def retrieve_context(query: str, k: int = TOP_K):
-    """Embed the query and fetch the top-k most relevant FAQ chunks from ChromaDB."""
-    query_embedding = _embedder.encode([query]).tolist()
-    results = _collection.query(query_embeddings=query_embedding, n_results=k)
+    """Fetch the top-k most relevant FAQ chunks from ChromaDB for the query."""
+    results = _collection.query(query_texts=[query], n_results=k)
     docs = results.get("documents", [[]])[0]
     return docs
 

@@ -12,6 +12,7 @@ Or just open http://localhost:8000/docs for the interactive Swagger UI.
 """
 
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
 import agent
@@ -20,6 +21,16 @@ app = FastAPI(
     title="SmartDesk AI",
     description="Agentic RAG-based support assistant for CloudCRM",
     version="1.0.0",
+)
+
+# Allow the deployed Streamlit frontend (a different domain) to call this API.
+# For a portfolio/demo project this is fine; a real production app would
+# restrict allow_origins to the specific frontend domain instead of "*".
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 

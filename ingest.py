@@ -11,12 +11,14 @@ Run this once (and again any time the FAQ document changes):
 
 import re
 import chromadb
-from sentence_transformers import SentenceTransformer
 
 FAQ_PATH = "data/product_faq.md"
 CHROMA_DIR = "chroma_db"
 COLLECTION_NAME = "product_faq"
-EMBEDDING_MODEL = "all-MiniLM-L6-v2"  # small (~80MB), runs fine on CPU / 8GB RAM
+# Note: no separate embedding model needed here -- ChromaDB's default
+# embedding function (a small ONNX MiniLM model bundled with chromadb)
+# handles embedding automatically, so we don't need to install/download
+# a full sentence-transformers + torch stack just to build the index.
 
 
 def load_chunks(path: str):
@@ -32,17 +34,11 @@ def load_chunks(path: str):
 
 
 def build_index():
-    print("Loading embedding model (first run downloads ~80MB)...")
-    model = SentenceTransformer(EMBEDDING_MODEL)
-
     print(f"Reading and chunking {FAQ_PATH} ...")
     chunks = load_chunks(FAQ_PATH)
     print(f"Found {len(chunks)} chunks.")
 
-    print("Computing embeddings...")
-    embeddings = model.encode(chunks, show_progress_bar=True).tolist()
-
-    print("Writing to ChromaDB...")
+    print("Writing to ChromaDB (embeddings computed automatically)...")
     client = chromadb.PersistentClient(path=CHROMA_DIR)
 
     # Fresh start each time ingest.py is run
@@ -55,7 +51,6 @@ def build_index():
     ids = [f"chunk_{i}" for i in range(len(chunks))]
     collection.add(
         ids=ids,
-        embeddings=embeddings,
         documents=chunks,
     )
 
