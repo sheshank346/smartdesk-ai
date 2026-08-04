@@ -14,13 +14,14 @@ Or just open http://localhost:8000/docs for the interactive Swagger UI.
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
+from typing import Optional
 
 import agent
 
 app = FastAPI(
     title="SmartDesk AI",
     description="Agentic RAG-based support assistant for CloudCRM",
-    version="1.0.0",
+    version="1.1.0",
 )
 
 # Allow the deployed Streamlit frontend (a different domain) to call this API.
@@ -34,8 +35,14 @@ app.add_middleware(
 )
 
 
+class HistoryTurn(BaseModel):
+    role: str  # "user" or "assistant"
+    content: str
+
+
 class ChatRequest(BaseModel):
     query: str
+    history: Optional[list[HistoryTurn]] = None
 
 
 class ChatResponse(BaseModel):
@@ -56,7 +63,8 @@ def health():
 
 @app.post("/chat", response_model=ChatResponse)
 def chat(request: ChatRequest):
-    result = agent.handle_query(request.query)
+    history = [h.model_dump() for h in request.history] if request.history else []
+    result = agent.handle_query(request.query, history=history)
     return ChatResponse(
         answer=result["answer"],
         action_taken=result["action_taken"],

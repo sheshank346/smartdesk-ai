@@ -39,5 +39,23 @@ Yes, pipeline stages are fully customizable on the Professional and Enterprise p
 ## What happens if I cancel my subscription?
 If you cancel, your account remains active until the end of the current billing cycle. After that, your account moves to the free tier with a 100-contact limit, and data beyond that limit is archived (not deleted) for 90 days, after which it may be permanently removed.
 
-## Does CloudCRM offer role-based access control?
+## Does CloudCRM support role-based access control?
 Yes. Admins can assign roles such as Admin, Manager, and Sales Rep, each with different permission levels for viewing, editing, or deleting records. Custom roles with granular permissions are available on the Enterprise plan.
+
+## Does CloudCRM offer a discount for annual billing?
+Yes, paying annually instead of monthly gives a 20 percent discount on the Starter and Professional plans. Enterprise plan discounts for annual commitments are negotiated directly with the sales team.
+
+## Can I set up multiple currencies for international sales?
+Yes, on the Professional and Enterprise plans you can enable multi-currency support under Settings, then Currency. Deal values are automatically converted to your primary reporting currency using daily exchange rates, while still displaying the original currency to reps.
+
+## Does CloudCRM have a Zapier or webhook integration?
+Yes, CloudCRM supports both. Webhooks can be configured under Settings, then Webhooks, to notify external systems in real time when records change. A Zapier integration is also available for connecting to over 5000 other apps without writing code.
+
+## What happens during scheduled maintenance?
+Scheduled maintenance windows are announced at least 72 hours in advance via email and an in-app banner. Maintenance is typically performed outside business hours (weekends, late night UTC) and usually causes less than 15 minutes of downtime.
+
+## Can I restore accidentally deleted records?
+Yes, deleted records go into a Recycle Bin and can be restored within 30 days from Settings, then Recycle Bin. After 30 days, records are permanently removed and cannot be recovered.
+
+## Does CloudCRM provide onboarding support for new customers?
+Yes. Professional and Enterprise customers get a guided onboarding call with a Customer Success representative within the first week. Starter plan customers have access to self-serve onboarding guides and video tutorials in the Help Center.

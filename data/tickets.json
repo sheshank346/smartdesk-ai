@@ -33,5 +33,40 @@
     "priority": "Low",
     "last_updated": "2026-07-15",
     "assigned_to": "Support Engineer - Arjun"
+  },
+  "TCK-1006": {
+    "subject": "Webhook not firing on deal stage change",
+    "status": "In Progress",
+    "priority": "Medium",
+    "last_updated": "2026-08-01",
+    "assigned_to": "Support Engineer - Meera"
+  },
+  "TCK-1007": {
+    "subject": "Need bulk export of contacts before cancellation",
+    "status": "Open",
+    "priority": "Medium",
+    "last_updated": "2026-08-02",
+    "assigned_to": "Support Engineer - Priya"
+  },
+  "TCK-1008": {
+    "subject": "Multi-currency totals showing incorrect conversion",
+    "status": "Waiting on Customer",
+    "priority": "High",
+    "last_updated": "2026-07-29",
+    "assigned_to": "Support Engineer - Arjun"
+  },
+  "TCK-1009": {
+    "subject": "Mobile app crashing on record open (Android)",
+    "status": "In Progress",
+    "priority": "Critical",
+    "last_updated": "2026-08-03",
+    "assigned_to": "Support Engineer - Meera"
+  },
+  "TCK-1010": {
+    "subject": "Requesting custom role with read-only report access",
+    "status": "Resolved",
+    "priority": "Low",
+    "last_updated": "2026-07-18",
+    "assigned_to": "Support Engineer - Priya"
   }
 }

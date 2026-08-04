@@ -3,15 +3,29 @@
 An AI support assistant for a CRM product ("CloudCRM") that can both **answer
 questions** from product documentation (RAG) and **take actions** — looking up
 live ticket status via a tool call — deciding which to do based on the query.
-Runs entirely free, locally, using Ollama.
+Remembers conversation context for natural follow-ups, degrades gracefully on
+errors, and includes an automated evaluation harness. Runs entirely free.
+
+## Features
+- **Agentic routing** — decides per-query whether to retrieve from a knowledge
+  base (RAG) or call a real backend tool (ticket lookup)
+- **Conversation memory** — follow-up questions like *"any update on it?"*
+  resolve correctly using recent chat history
+- **Graceful error handling** — LLM/network failures return a helpful message
+  instead of crashing; empty input is validated
+- **Automated evaluation harness** (`eval.py`) — scores routing accuracy,
+  answer relevance, and RAG faithfulness (LLM-as-judge) across a test suite
+- **Dual deployment modes** — free local model (Ollama) for development, free
+  cloud API (Groq) for the live deployed demo
 
 ## Architecture
 
 ```
-User query
+User query + recent conversation history
     │
     ▼
-[ROUTE]  LLM decides: ticket lookup or FAQ question?
+[ROUTE]  LLM (+ deterministic fallback) decides: ticket lookup or FAQ question?
+    │  also resolves follow-ups (e.g. "update on it?") using history
     │                              │
     ▼ (ticket)                     ▼ (FAQ)
 [ACT]                        [ACT]
@@ -19,11 +33,15 @@ check_ticket_status()        retrieve_context() from ChromaDB
 (mock CRM tool)              (vector search over product docs)
     │                              │
     └──────────► [RESPOND] ◄───────┘
-           LLM generates final answer
-           grounded in tool result / retrieved chunks
+           LLM generates final answer, grounded in
+           tool result / retrieved chunks + history
                     │
                     ▼
               Answer shown in Streamlit UI
+                    │
+                    ▼
+        [EVAL] eval.py scores routing accuracy,
+        relevance, and faithfulness offline
 ```
 
 ## How to run (after completing SETUP_FIRST.md)
@@ -59,17 +77,36 @@ Watch the "action taken" label under each answer — it shows whether the
 agent chose RAG retrieval or a tool call, which is the core thing to
 point out in an interview demo.
 
+## Running the evaluation harness
+After the backend is set up (Ollama running, `ingest.py` already run once):
+```
+python eval.py
+```
+This runs a fixed test suite against the agent and prints a scorecard:
+- **Routing accuracy** — did it correctly choose RAG vs tool-call?
+- **Relevance** — does the answer contain the expected key facts?
+- **Faithfulness** — for RAG answers, is the answer grounded in retrieved
+  context (scored by an LLM-as-judge), not hallucinated?
+- **Latency** — average response time per query
+
+A detailed per-query breakdown is saved to `eval_report.json`. This is the
+piece worth highlighting in interviews — it shows you're thinking about how
+to *measure* an AI system's quality, not just build it.
+
 ## Project structure
 ```
 smartdesk-ai/
 ├── data/
-│   ├── product_faq.md      # mock company knowledge base
-│   └── tickets.json        # mock CRM ticket database (simulates a real API)
+│   ├── product_faq.md      # mock company knowledge base (20 sections)
+│   └── tickets.json        # mock CRM ticket database (10 tickets)
 ├── ingest.py                # builds the vector index (RAG setup)
 ├── tools.py                 # the "action" the agent can take
-├── agent.py                 # core routing + RAG + tool-calling logic
+├── agent.py                 # core routing + RAG + tool-calling + memory logic
 ├── api.py                   # FastAPI backend (REST API)
 ├── app.py                   # Streamlit chat UI
+├── eval.py                  # automated evaluation harness
+├── render.yaml               # backend deployment config (Render)
+├── DEPLOY.md                 # step-by-step deployment guide
 ├── requirements.txt
 └── README.md
 ```
@@ -81,20 +118,32 @@ smartdesk-ai/
   backend function (ticket lookup), and acts on that decision. That
   route → act → respond loop is the same pattern used in production agent
   frameworks and tools like Salesforce Agentforce.
-- **"Why local model instead of an API?"** To keep it fully free while
-  building, and to demonstrate understanding of self-hosted vs. API-based
-  trade-offs (latency, cost, data privacy, model quality) — a real
-  engineering decision, not just a limitation.
-- **"How do you handle unreliable routing from a small model?"** There's a
-  deterministic keyword/regex fallback if the LLM's JSON routing output
-  can't be parsed — this is a resilience pattern: never let a probabilistic
-  component be a single point of failure in a system a user depends on.
-- **"What would you improve with more time?"** Add the evaluation harness
-  (faithfulness/relevance scoring), swap the mock ticket JSON for a real
-  database, add conversation memory across turns, and add streaming
-  responses instead of waiting for the full answer.
+- **"How do you know the AI is actually giving good answers?"** The
+  evaluation harness (`eval.py`) scores routing accuracy exactly, relevance
+  via keyword coverage, and faithfulness via an LLM-as-judge that checks
+  whether answers are actually grounded in retrieved context rather than
+  hallucinated — the same category of technique used in real RAG evaluation
+  tools like RAGAS.
+- **"How does it handle multi-turn conversations?"** Recent conversation
+  history is passed into both the routing decision and the answer generation
+  step, so a follow-up like "any update on it?" after asking about a ticket
+  correctly resolves which ticket "it" refers to.
+- **"What happens if something fails — the LLM API, the vector DB?"**
+  Failures are caught explicitly and produce a graceful fallback message
+  (or, for ticket lookups, the raw data formatted directly) instead of
+  crashing the request — a small thing, but it's the difference between a
+  demo and something that behaves reasonably under real conditions.
+- **"Why local model instead of an API?"** For local development, using
+  Ollama keeps everything free. The live deployed version swaps to Groq's
+  free API instead, since hosting platforms don't have enough RAM/CPU to
+  run a local LLM — same code path, different backend, controlled by one
+  environment variable.
+- **"What would you improve with more time?"** Add a proper vector-store
+  benchmark comparing retrieval strategies, stream responses token-by-token
+  instead of waiting for the full answer, and expand the evaluation set
+  significantly beyond 8 test cases.
 
-## Next steps (after today, not required for the first working version)
-- Add an evaluation script scoring answer faithfulness/relevance
-- Deploy the API + UI on a free host (Render/Railway/HF Spaces) for a live demo link
-- Push to GitHub with this README as-is — it doubles as your project write-up
+## Next steps (optional further polish)
+- Add a short demo video/GIF to this README
+- Expand the evaluation test suite further
+- Add authentication if this were to handle real customer data

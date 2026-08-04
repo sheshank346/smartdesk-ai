@@ -45,15 +45,39 @@ if user_input:
 
     with st.chat_message("assistant"):
         with st.spinner("Thinking..."):
+            # Send recent conversation history (excluding the message we just
+            # added) so the backend can resolve follow-up questions like
+            # "any update on it?"
+            history_payload = [
+                {"role": m["role"], "content": m["content"]}
+                for m in st.session_state.messages[:-1]
+            ]
             try:
-                resp = requests.post(API_URL, json={"query": user_input}, timeout=60)
+                resp = requests.post(
+                    API_URL,
+                    json={"query": user_input, "history": history_payload},
+                    timeout=90,
+                )
                 resp.raise_for_status()
                 data = resp.json()
                 answer = data["answer"]
                 action = data["action_taken"]
                 sources = data.get("sources", [])
+            except requests.exceptions.ConnectionError:
+                answer = (
+                    f"Can't reach the backend at `{BACKEND_BASE_URL}`. If you're running "
+                    f"locally, make sure `uvicorn api:app` is running on port 8000. If this "
+                    f"is the deployed version, the free-tier backend may be waking up from "
+                    f"sleep — try again in about a minute."
+                )
+                action = None
+                sources = []
+            except requests.exceptions.Timeout:
+                answer = "The request timed out. The backend might be waking up from sleep (free tier) — please try again."
+                action = None
+                sources = []
             except Exception as e:
-                answer = f"Error reaching backend: {e}. Is `uvicorn api:app` running on port 8000?"
+                answer = f"Something went wrong: {e}"
                 action = None
                 sources = []
 
@@ -76,9 +100,12 @@ with st.sidebar:
         "2. **Act** — calls a mock CRM ticket API, or retrieves relevant "
         "FAQ chunks from ChromaDB\n"
         "3. **Respond** — the LLM generates a final answer grounded in "
-        "the tool result or retrieved context\n\n"
-        "Try: *\"What's the status of TCK-1004?\"* vs "
-        "*\"What are the pricing plans?\"*"
+        "the tool result or retrieved context, using recent conversation "
+        "history to understand follow-ups\n\n"
+        "Try: *\"What's the status of TCK-1004?\"* then a follow-up like "
+        "*\"any update on it?\"*"
     )
     st.divider()
-    st.caption("Running 100% locally via Ollama — no API costs.")
+    if st.button("🗑️ Clear conversation"):
+        st.session_state.messages = []
+        st.rerun()

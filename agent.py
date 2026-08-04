@@ -53,60 +53,117 @@ _client = chromadb.PersistentClient(path=CHROMA_DIR)
 _collection = _client.get_collection(COLLECTION_NAME)
 
 
+class LLMUnavailableError(Exception):
+    """Raised when the configured LLM backend can't be reached or errors out."""
+    pass
+
+
 def call_llm(prompt: str, temperature: float = 0.2) -> str:
-    """Send a prompt to whichever LLM backend is configured (Ollama or Groq)."""
-    if LLM_PROVIDER == "groq":
-        if not GROQ_API_KEY:
-            raise RuntimeError("LLM_PROVIDER is set to 'groq' but GROQ_API_KEY is not set.")
+    """Send a prompt to whichever LLM backend is configured (Ollama or Groq).
+    Raises LLMUnavailableError on any failure so callers can show a graceful
+    message instead of crashing the request."""
+    try:
+        if LLM_PROVIDER == "groq":
+            if not GROQ_API_KEY:
+                raise LLMUnavailableError(
+                    "LLM_PROVIDER is set to 'groq' but GROQ_API_KEY is not set."
+                )
+            response = requests.post(
+                GROQ_URL,
+                headers={
+                    "Authorization": f"Bearer {GROQ_API_KEY}",
+                    "Content-Type": "application/json",
+                },
+                json={
+                    "model": GROQ_MODEL,
+                    "messages": [{"role": "user", "content": prompt}],
+                    "temperature": temperature,
+                },
+                timeout=60,
+            )
+            response.raise_for_status()
+            return response.json()["choices"][0]["message"]["content"].strip()
+
+        # default: local Ollama
         response = requests.post(
-            GROQ_URL,
-            headers={
-                "Authorization": f"Bearer {GROQ_API_KEY}",
-                "Content-Type": "application/json",
-            },
+            OLLAMA_URL,
             json={
-                "model": GROQ_MODEL,
-                "messages": [{"role": "user", "content": prompt}],
-                "temperature": temperature,
+                "model": OLLAMA_MODEL,
+                "prompt": prompt,
+                "stream": False,
+                "options": {"temperature": temperature},
             },
-            timeout=60,
+            timeout=120,
         )
         response.raise_for_status()
-        return response.json()["choices"][0]["message"]["content"].strip()
+        return response.json().get("response", "").strip()
 
-    # default: local Ollama
-    response = requests.post(
-        OLLAMA_URL,
-        json={
-            "model": OLLAMA_MODEL,
-            "prompt": prompt,
-            "stream": False,
-            "options": {"temperature": temperature},
-        },
-        timeout=120,
-    )
-    response.raise_for_status()
-    return response.json().get("response", "").strip()
+    except requests.exceptions.ConnectionError as e:
+        if LLM_PROVIDER != "groq":
+            raise LLMUnavailableError(
+                "Can't reach Ollama. Make sure Ollama is running (open the Ollama "
+                "app, or run 'ollama serve') and the model is pulled."
+            ) from e
+        raise LLMUnavailableError(f"Can't reach the Groq API: {e}") from e
+    except requests.exceptions.Timeout as e:
+        raise LLMUnavailableError("The LLM took too long to respond (timeout).") from e
+    except requests.exceptions.HTTPError as e:
+        raise LLMUnavailableError(f"LLM backend returned an error: {e}") from e
+    except LLMUnavailableError:
+        raise
+    except Exception as e:
+        raise LLMUnavailableError(f"Unexpected error calling the LLM: {e}") from e
 
 
 def retrieve_context(query: str, k: int = TOP_K):
-    """Fetch the top-k most relevant FAQ chunks from ChromaDB for the query."""
-    results = _collection.query(query_texts=[query], n_results=k)
-    docs = results.get("documents", [[]])[0]
-    return docs
+    """Fetch the top-k most relevant FAQ chunks from ChromaDB for the query.
+    Returns an empty list (instead of crashing) if the vector DB has an issue,
+    so the assistant can still respond with a fallback message."""
+    try:
+        results = _collection.query(query_texts=[query], n_results=k)
+        return results.get("documents", [[]])[0]
+    except Exception:
+        return []
 
 
 TICKET_ID_PATTERN = re.compile(r"TCK-\d{3,6}", re.IGNORECASE)
+MAX_HISTORY_TURNS = 4  # how many past exchanges to feed back into prompts
 
 
-def route_query(user_query: str) -> dict:
+def format_history(history: list) -> str:
+    """Turn a list of {'role': 'user'|'assistant', 'content': str} into a
+    short text block for prompt context. Keeps only the most recent turns
+    so prompts stay small and fast, even in a long conversation."""
+    if not history:
+        return ""
+    recent = history[-(MAX_HISTORY_TURNS * 2):]
+    lines = [f"{'User' if h['role'] == 'user' else 'Assistant'}: {h['content']}" for h in recent]
+    return "\n".join(lines)
+
+
+def find_last_ticket_id(history: list) -> str | None:
+    """Look back through recent conversation for the last ticket ID mentioned,
+    so follow-up questions like 'any update on it?' can resolve what 'it' means."""
+    if not history:
+        return None
+    for turn in reversed(history):
+        match = TICKET_ID_PATTERN.search(turn.get("content", ""))
+        if match:
+            return match.group(0).upper()
+    return None
+
+
+def route_query(user_query: str, history: list = None) -> dict:
     """
     Decide whether this query needs the ticket-status tool or the FAQ knowledge base.
     Tries LLM-based routing first (more flexible), falls back to a deterministic
     keyword/regex check if the LLM output can't be parsed (more reliable).
+    Also resolves follow-up references (e.g. "any update on it?") using
+    conversation history.
     """
+    history = history or []
     routing_prompt = f"""You are a routing classifier for a CRM support assistant.
-Given the user's message, decide which action to take.
+Given the conversation so far and the user's latest message, decide which action to take.
 
 Respond with ONLY a JSON object, no other text, in this exact format:
 {{"action": "ticket_status", "ticket_id": "TCK-XXXX"}}
@@ -114,9 +171,13 @@ or
 {{"action": "faq"}}
 
 Use "ticket_status" only if the user is asking about the status of a specific
-support ticket AND mentions a ticket ID (format TCK-XXXX). Otherwise use "faq".
+support ticket AND a ticket ID (format TCK-XXXX) is known, either from the
+current message or from the conversation history below. Otherwise use "faq".
 
-User message: {user_query}
+Conversation so far:
+{format_history(history) or "(none)"}
+
+User's latest message: {user_query}
 JSON response:"""
 
     try:
@@ -133,8 +194,14 @@ JSON response:"""
 
     # --- Deterministic fallback (keeps the demo reliable even if the LLM misfires) ---
     id_match = TICKET_ID_PATTERN.search(user_query)
-    if id_match and any(w in user_query.lower() for w in ["status", "ticket", "update"]):
+    is_status_question = any(w in user_query.lower() for w in ["status", "ticket", "update"])
+    if id_match and is_status_question:
         return {"action": "ticket_status", "ticket_id": id_match.group(0).upper()}
+    if not id_match and is_status_question:
+        # follow-up like "any update on it?" -- try to resolve from history
+        remembered_id = find_last_ticket_id(history)
+        if remembered_id:
+            return {"action": "ticket_status", "ticket_id": remembered_id}
     return {"action": "faq"}
 
 
@@ -143,15 +210,32 @@ def answer_ticket_status(user_query: str, ticket_id: str) -> dict:
 
     if not result["found"]:
         answer = f"I couldn't find a ticket with ID {ticket_id}. Please double check the ticket number."
-    else:
-        prompt = f"""You are a helpful CRM support assistant. A user asked about a support ticket.
+        return {
+            "answer": answer,
+            "action_taken": "tool_call: check_ticket_status",
+            "sources": [],
+            "raw_tool_result": result,
+        }
+
+    prompt = f"""You are a helpful CRM support assistant. A user asked about a support ticket.
 Here is the live ticket data retrieved from the system:
 {json.dumps(result, indent=2)}
 
 Write a short, friendly, natural-language answer to the user's question using this data.
 User's question: {user_query}
 Answer:"""
+    try:
         answer = call_llm(prompt, temperature=0.3)
+    except LLMUnavailableError:
+        # Graceful degradation: we still have the real ticket data, just
+        # format it directly instead of failing the whole request.
+        answer = (
+            f"Ticket {result['ticket_id']}: \"{result['subject']}\" — status: "
+            f"{result['status']}, priority: {result['priority']}, assigned to "
+            f"{result['assigned_to']}, last updated {result['last_updated']}. "
+            f"(Note: the AI assistant is temporarily unavailable, so this is the "
+            f"raw ticket data.)"
+        )
 
     return {
         "answer": answer,
@@ -161,22 +245,50 @@ Answer:"""
     }
 
 
-def answer_faq(user_query: str) -> dict:
+def answer_faq(user_query: str, history: list = None) -> dict:
+    history = history or []
     context_chunks = retrieve_context(user_query)
-    context_text = "\n\n---\n\n".join(context_chunks) if context_chunks else "No relevant context found."
+
+    if not context_chunks:
+        return {
+            "answer": "I couldn't search the knowledge base right now, so I'm not able to "
+                      "answer that confidently. Please try again in a moment, or contact "
+                      "support@cloudcrm.example.",
+            "action_taken": "rag_retrieval (no context found)",
+            "sources": [],
+            "raw_tool_result": None,
+        }
+
+    context_text = "\n\n---\n\n".join(context_chunks)
+    history_text = format_history(history)
 
     prompt = f"""You are a helpful CRM product support assistant for "CloudCRM".
 Answer the user's question using ONLY the context below. If the answer isn't
 in the context, say you don't have that information and suggest they contact
 support@cloudcrm.example. Keep the answer concise (2-4 sentences).
+Use the conversation history to understand follow-up questions (e.g. "what about X"),
+but answer only the latest question.
 
 Context:
 {context_text}
 
-User's question: {user_query}
+Conversation so far:
+{history_text or "(none)"}
+
+User's latest question: {user_query}
 Answer:"""
 
-    answer = call_llm(prompt, temperature=0.2)
+    try:
+        answer = call_llm(prompt, temperature=0.2)
+    except LLMUnavailableError as e:
+        return {
+            "answer": f"Sorry, I'm having trouble reaching the AI service right now ({e}). "
+                      f"Please try again shortly.",
+            "action_taken": "rag_retrieval (LLM error)",
+            "sources": context_chunks,
+            "raw_tool_result": None,
+        }
+
     return {
         "answer": answer,
         "action_taken": "rag_retrieval",
@@ -185,21 +297,43 @@ Answer:"""
     }
 
 
-def handle_query(user_query: str) -> dict:
-    """Main entry point: route, act, respond."""
-    route = route_query(user_query)
+def handle_query(user_query: str, history: list = None) -> dict:
+    """Main entry point: route, act, respond. `history` is an optional list of
+    {'role': 'user'|'assistant', 'content': str} dicts from earlier in the
+    conversation, used to resolve follow-up questions."""
+    history = history or []
+
+    if not user_query or not user_query.strip():
+        return {
+            "answer": "Please type a question — I can help with CloudCRM product "
+                      "questions or ticket status lookups.",
+            "action_taken": "input_validation",
+            "sources": [],
+            "raw_tool_result": None,
+        }
+
+    try:
+        route = route_query(user_query, history)
+    except Exception:
+        # If even routing fails unexpectedly, default to the safer FAQ path
+        # rather than crashing the whole request.
+        route = {"action": "faq"}
+
     if route["action"] == "ticket_status":
         return answer_ticket_status(user_query, route["ticket_id"])
-    return answer_faq(user_query)
+    return answer_faq(user_query, history)
 
 
 if __name__ == "__main__":
-    # Quick manual test from the command line
+    # Quick manual test from the command line, now with conversation memory
     print("SmartDesk AI agent - type a question (or 'quit')\n")
+    conversation = []
     while True:
         q = input("You: ").strip()
         if q.lower() in ("quit", "exit"):
             break
-        result = handle_query(q)
+        result = handle_query(q, history=conversation)
         print(f"\n[action: {result['action_taken']}]")
         print(f"Assistant: {result['answer']}\n")
+        conversation.append({"role": "user", "content": q})
+        conversation.append({"role": "assistant", "content": result["answer"]})
