@@ -40,7 +40,8 @@ OLLAMA_MODEL = "llama3.2:3b"
 
 GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "")
 GROQ_URL = "https://api.groq.com/openai/v1/chat/completions"
-GROQ_MODEL = "llama-3.1-8b-instant"  # fast, free-tier Groq model
+GROQ_MODEL = "openai/gpt-oss-20b"  # fast, free-tier Groq model (migrated from
+# llama-3.1-8b-instant, which Groq decommissioned Aug 16, 2026)
 
 CHROMA_DIR = "chroma_db"
 COLLECTION_NAME = "product_faq"
