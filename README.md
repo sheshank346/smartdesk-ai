@@ -109,39 +109,6 @@ smartdesk-ai/
 ├── DEPLOY.md                 # step-by-step deployment guide
 ├── requirements.txt
 └── README.md
-```
-
-## What to say about this in an interview
-
-- **"Why is this agentic, not just a chatbot?"** Because it doesn't only
-  generate text — it decides whether to retrieve information or call a real
-  backend function (ticket lookup), and acts on that decision. That
-  route → act → respond loop is the same pattern used in production agent
-  frameworks and tools like Salesforce Agentforce.
-- **"How do you know the AI is actually giving good answers?"** The
-  evaluation harness (`eval.py`) scores routing accuracy exactly, relevance
-  via keyword coverage, and faithfulness via an LLM-as-judge that checks
-  whether answers are actually grounded in retrieved context rather than
-  hallucinated — the same category of technique used in real RAG evaluation
-  tools like RAGAS.
-- **"How does it handle multi-turn conversations?"** Recent conversation
-  history is passed into both the routing decision and the answer generation
-  step, so a follow-up like "any update on it?" after asking about a ticket
-  correctly resolves which ticket "it" refers to.
-- **"What happens if something fails — the LLM API, the vector DB?"**
-  Failures are caught explicitly and produce a graceful fallback message
-  (or, for ticket lookups, the raw data formatted directly) instead of
-  crashing the request — a small thing, but it's the difference between a
-  demo and something that behaves reasonably under real conditions.
-- **"Why local model instead of an API?"** For local development, using
-  Ollama keeps everything free. The live deployed version swaps to Groq's
-  free API instead, since hosting platforms don't have enough RAM/CPU to
-  run a local LLM — same code path, different backend, controlled by one
-  environment variable.
-- **"What would you improve with more time?"** Add a proper vector-store
-  benchmark comparing retrieval strategies, stream responses token-by-token
-  instead of waiting for the full answer, and expand the evaluation set
-  significantly beyond 8 test cases.
 
 ## Next steps (optional further polish)
 - Add a short demo video/GIF to this README
