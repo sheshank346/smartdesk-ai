@@ -1,0 +1,37 @@
+{
+  "TCK-1001": {
+    "subject": "Unable to sync Gmail integration",
+    "status": "In Progress",
+    "priority": "High",
+    "last_updated": "2026-07-28",
+    "assigned_to": "Support Engineer - Priya"
+  },
+  "TCK-1002": {
+    "subject": "Request to increase API rate limit",
+    "status": "Waiting on Customer",
+    "priority": "Medium",
+    "last_updated": "2026-07-25",
+    "assigned_to": "Support Engineer - Arjun"
+  },
+  "TCK-1003": {
+    "subject": "CSV import failing for 5000 records",
+    "status": "Resolved",
+    "priority": "High",
+    "last_updated": "2026-07-20",
+    "assigned_to": "Support Engineer - Priya"
+  },
+  "TCK-1004": {
+    "subject": "SSO login not working for Enterprise account",
+    "status": "Open",
+    "priority": "Critical",
+    "last_updated": "2026-07-30",
+    "assigned_to": "Support Engineer - Meera"
+  },
+  "TCK-1005": {
+    "subject": "Question about custom pipeline stages",
+    "status": "Closed",
+    "priority": "Low",
+    "last_updated": "2026-07-15",
+    "assigned_to": "Support Engineer - Arjun"
+  }
+}
