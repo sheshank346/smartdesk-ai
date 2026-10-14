@@ -2,8 +2,7 @@
 
 An AI-powered support assistant for a CRM product ("CloudCRM") built with an **Agentic RAG architecture**. SmartDesk AI can both **answer product questions** using retrieval-augmented generation (RAG) and **take actions**—such as fetching live ticket status via dynamic tool calls—by intelligently routing queries based on user intent.
 
-> 🚀 **Live Interactive App:** [https://smartdesk-ai-2emjgcwyos5bug3d7vgfkj.streamlit.app](https://smartdesk-ai-2emjgcwyos5bug3d7vgfkj.streamlit.app)  
-> 🔗 **Live Backend API Docs:** [https://YOUR-RENDER-API-URL.onrender.com/docs](https://YOUR-RENDER-API-URL.onrender.com/docs)
+>  **Live Interactive App:** [https://smartdesk-ai-2emjgcwyos5bug3d7vgfkj.streamlit.app](https://smartdesk-ai-2emjgcwyos5bug3d7vgfkj.streamlit.app)  
 
 ---
 
